@@ -6,6 +6,7 @@ import {
     getAllGames,
     getAllGameIds,
     getGameById,
+    sortGames,
 } from './games';
 
 async function seedGames(db: Database, count: number): Promise<void> {
@@ -43,6 +44,28 @@ describe('games data-access helpers', () => {
         expect(all.map((g) => g.title)).toEqual(['Game 01', 'Game 02', 'Game 03']);
         expect(all[0].category).toEqual({ id: expect.any(Number), name: 'Strategy' });
         expect(all[0].publisher).toEqual({ id: expect.any(Number), name: 'Pub One' });
+    });
+
+    it('returns all games sorted by title in reverse when requested', async () => {
+        await seedGames(db, 3);
+        const all = await getAllGames(db, 'title-desc');
+        expect(all.map((g) => g.title)).toEqual(['Game 03', 'Game 02', 'Game 01']);
+    });
+
+    it('returns all games sorted by rating with unrated entries last', () => {
+        const gamesToSort = [
+            { id: 1, title: 'Alpha', description: 'Alpha desc', starRating: null, category: null, publisher: null },
+            { id: 2, title: 'Bravo', description: 'Bravo desc', starRating: 4.8, category: null, publisher: null },
+            { id: 3, title: 'Charlie', description: 'Charlie desc', starRating: 4.2, category: null, publisher: null },
+            { id: 4, title: 'Delta', description: 'Delta desc', starRating: null, category: null, publisher: null },
+        ];
+
+        expect(sortGames(gamesToSort, 'rating-desc').map((game) => game.title)).toEqual([
+            'Bravo',
+            'Charlie',
+            'Alpha',
+            'Delta',
+        ]);
     });
 
     it('returns all game ids ordered by title', async () => {
