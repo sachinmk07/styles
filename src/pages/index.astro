@@ -4,11 +4,11 @@ import GameCard from '../components/GameCard.astro';
 import PageHero from '../components/PageHero.astro';
 import EmptyState from '../components/EmptyState.astro';
 import { getDatabase } from '../lib/db';
-import { getAllGames } from '../lib/games';
+import { DEFAULT_GAME_SORT, GAME_SORT_OPTIONS, getAllGames } from '../lib/games';
 
 export const prerender = true;
 
-const games = await getAllGames(getDatabase());
+const games = await getAllGames(getDatabase(), DEFAULT_GAME_SORT);
 ---
 
 <Layout title="Tailspin Toys - Crowdfunding your new favorite game!">
@@ -17,6 +17,38 @@ const games = await getAllGames(getDatabase());
       title="Welcome to Tailspin Toys"
       subtitle="Find your next game! And maybe even back one! Explore our collection!"
     />
+
+    <div class="mb-6">
+      <form class="flex flex-col gap-3 sm:flex-row sm:items-end" data-testid="game-sort-form">
+        <div class="flex flex-col gap-2">
+          <label for="game-sort" class="text-sm font-medium text-slate-200" data-testid="game-sort-label">
+            Sort games
+          </label>
+          <select
+            id="game-sort"
+            name="sort"
+            class="rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            data-testid="game-sort-select"
+          >
+            {GAME_SORT_OPTIONS.map((option) => (
+              <option value={option}>
+                {option === 'title-asc' && 'Title: A–Z'}
+                {option === 'title-desc' && 'Title: Z–A'}
+                {option === 'rating-desc' && 'Rating: Highest first'}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <button
+          type="submit"
+          class="rounded-lg bg-blue-600 px-4 py-2 font-medium text-white transition-colors hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          data-testid="game-sort-submit"
+        >
+          Apply
+        </button>
+      </form>
+    </div>
 
     <div>
       <h2 class="text-2xl font-medium mb-6 text-slate-100">Featured Games</h2>
@@ -31,3 +63,77 @@ const games = await getAllGames(getDatabase());
     </div>
   </div>
 </Layout>
+
+<script>
+  const sortSelect = document.getElementById('game-sort') as HTMLSelectElement | null;
+  const gamesGrid = document.querySelector('[data-testid="games-grid"]') as HTMLElement | null;
+
+  function sortCards(sort: string): void {
+    if (!sortSelect || !gamesGrid) {
+      return;
+    }
+
+    const cards = Array.from(gamesGrid.children).filter((child): child is HTMLElement => child instanceof HTMLElement);
+
+    cards.sort((a, b) => {
+      const titleA = a.getAttribute('data-game-title') ?? '';
+      const titleB = b.getAttribute('data-game-title') ?? '';
+
+      if (sort === 'title-desc') {
+        return titleB.localeCompare(titleA, undefined, { sensitivity: 'base' });
+      }
+
+      if (sort === 'rating-desc') {
+        const ratingA = Number(a.getAttribute('data-game-rating'));
+        const ratingB = Number(b.getAttribute('data-game-rating'));
+        const aRating = Number.isFinite(ratingA) ? ratingA : 0;
+        const bRating = Number.isFinite(ratingB) ? ratingB : 0;
+
+        if (bRating !== aRating) {
+          return bRating - aRating;
+        }
+
+        return titleA.localeCompare(titleB, undefined, { sensitivity: 'base' });
+      }
+
+      return titleA.localeCompare(titleB, undefined, { sensitivity: 'base' });
+    });
+
+    cards.forEach((card) => gamesGrid.appendChild(card));
+  }
+
+  if (sortSelect && gamesGrid) {
+    const updateSortOption = (): void => {
+      const params = new URLSearchParams(window.location.search);
+      const nextSort = params.get('sort') ?? 'title-asc';
+      sortSelect.value = nextSort;
+      sortCards(nextSort);
+    };
+
+    sortSelect.addEventListener('change', (event) => {
+      const target = event.target as HTMLSelectElement;
+      const url = new URL(window.location.href);
+      url.searchParams.set('sort', target.value);
+      window.history.replaceState({}, '', url);
+      sortCards(target.value);
+    });
+
+    const submitButton = document.querySelector('[data-testid="game-sort-submit"]');
+    if (submitButton) {
+      const form = submitButton.closest('form');
+      if (form) {
+        form.addEventListener('submit', (event) => {
+          event.preventDefault();
+          if (sortSelect) {
+            const url = new URL(window.location.href);
+            url.searchParams.set('sort', sortSelect.value);
+            window.history.replaceState({}, '', url);
+            sortCards(sortSelect.value);
+          }
+        });
+      }
+    }
+
+    updateSortOption();
+  }
+</script>

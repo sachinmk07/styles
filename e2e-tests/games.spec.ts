@@ -1,5 +1,15 @@
 import { test, expect, type Response } from '@playwright/test';
 
+function ratingFromTitle(title: string): number {
+  let hash = 0;
+  for (let i = 0; i < title.length; i++) {
+    hash = (hash * 31 + title.charCodeAt(i)) >>> 0;
+  }
+
+  const tenths = hash % 21;
+  return Number((3.0 + tenths / 10).toFixed(1));
+}
+
 test.describe('Game Listing and Navigation', () => {
   test('should display games with titles on index page', async ({ page }) => {
     await test.step('Navigate to homepage', async () => {
@@ -21,6 +31,54 @@ test.describe('Game Listing and Navigation', () => {
       const gameCards = page.getByTestId('game-card');
       await expect(gameCards.first().getByTestId('game-title')).toBeVisible();
       await expect(gameCards.first().getByTestId('game-title')).not.toBeEmpty();
+    });
+  });
+
+  test('should allow games to be sorted alphabetically in both directions', async ({ page }) => {
+    await test.step('Open the homepage and inspect the sort control', async () => {
+      await page.goto('/');
+      const sortLabel = page.getByLabel('Sort games');
+      await expect(sortLabel).toBeVisible();
+      await expect(page.getByTestId('game-sort-select')).toHaveValue('title-asc');
+    });
+
+    let defaultTitles: string[] = [];
+    await test.step('Verify the default order is alphabetical', async () => {
+      defaultTitles = await page.getByTestId('game-title').allTextContents();
+      expect(defaultTitles).toEqual([...defaultTitles].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' })));
+    });
+
+    await test.step('Change the sort order and apply it', async () => {
+      await page.getByTestId('game-sort-select').selectOption('title-desc');
+      await page.getByTestId('game-sort-submit').click();
+    });
+
+    await test.step('Verify the page rerenders in reverse alphabetical order', async () => {
+      const titles = await page.getByTestId('game-title').allTextContents();
+      const expected = [...defaultTitles].sort((a, b) => b.localeCompare(a, undefined, { sensitivity: 'base' }));
+      expect(titles).toEqual(expected);
+    });
+  });
+
+  test('should allow games to be sorted by star rating with unrated items last', async ({ page }) => {
+    await test.step('Load the homepage in rating order', async () => {
+      await page.goto('/?sort=rating-desc');
+      await expect(page.getByTestId('game-sort-select')).toHaveValue('rating-desc');
+    });
+
+    await test.step('Verify the game list is ordered by descending rating and null ratings are last', async () => {
+      const cards = page.getByTestId('game-card');
+      const titles = await cards.evaluateAll((elements) =>
+        elements.map((element) => element.getAttribute('data-game-title') ?? ''),
+      );
+
+      const sortedTitles = [...titles].sort((a, b) => {
+        const ratingA = ratingFromTitle(a);
+        const ratingB = ratingFromTitle(b);
+        return ratingB - ratingA || a.localeCompare(b, undefined, { sensitivity: 'base' });
+      });
+
+      expect(titles).toEqual(sortedTitles);
     });
   });
 

@@ -3,6 +3,51 @@ import type { Database } from './db';
 import { games, categories, publishers } from '../../db/schema';
 import type { Game } from '../types/game';
 
+export const GAME_SORT_OPTIONS = ['title-asc', 'title-desc', 'rating-desc'] as const;
+export type GameSortOption = (typeof GAME_SORT_OPTIONS)[number];
+export const DEFAULT_GAME_SORT: GameSortOption = 'title-asc';
+
+export function isGameSortOption(value: string | null): value is GameSortOption {
+    return value !== null && GAME_SORT_OPTIONS.includes(value as GameSortOption);
+}
+
+function compareTitles(a: Pick<Game, 'title'>, b: Pick<Game, 'title'>): number {
+    return a.title.localeCompare(b.title, undefined, { sensitivity: 'base' });
+}
+
+export function sortGames(gamesToSort: Game[], sort: GameSortOption = DEFAULT_GAME_SORT): Game[] {
+    const sorted = [...gamesToSort];
+
+    sorted.sort((a, b) => {
+        switch (sort) {
+            case 'title-desc':
+                return compareTitles(b, a);
+            case 'rating-desc': {
+                const aRating = a.starRating ?? null;
+                const bRating = b.starRating ?? null;
+
+                if (aRating === null && bRating === null) {
+                    return compareTitles(a, b);
+                }
+                if (aRating === null) {
+                    return 1;
+                }
+                if (bRating === null) {
+                    return -1;
+                }
+
+                const ratingDelta = bRating - aRating;
+                return ratingDelta !== 0 ? ratingDelta : compareTitles(a, b);
+            }
+            case 'title-asc':
+            default:
+                return compareTitles(a, b);
+        }
+    });
+
+    return sorted;
+}
+
 const gameSelection = {
     id: games.id,
     title: games.title,
@@ -50,10 +95,10 @@ function baseGamesQuery(db: Database) {
         .leftJoin(publishers, eq(games.publisherId, publishers.id));
 }
 
-/** All games ordered by title. */
-export async function getAllGames(db: Database): Promise<Game[]> {
+/** All games ordered by the requested sort, defaulting to title A–Z. */
+export async function getAllGames(db: Database, sort: GameSortOption = DEFAULT_GAME_SORT): Promise<Game[]> {
     const rows = await baseGamesQuery(db).orderBy(asc(games.title));
-    return rows.map(mapGame);
+    return sortGames(rows.map(mapGame), sort);
 }
 
 /** All game ids ordered by title. */
